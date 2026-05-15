@@ -37,28 +37,47 @@ else:
         # Inicializa o detector nativo do OpenCV
         detector = cv2.barcode.BarcodeDetector()
 
-        # Desempacotando os 3 valores retornados pela API moderna do OpenCV
+        # Desempacotando os 3 valores retornados pelo OpenCV
         retval, decoded_info, points = detector.detectAndDecode(gray)
 
-        # CORREÇÃO DEFINITIVA: Usamos .any() caso o retval seja um array do NumPy,
-        # e tratamos o decoded_info de forma estritamente segura.
-        sucesso = retval.any() if isinstance(retval, np.ndarray) else bool(retval)
-
-        if sucesso and decoded_info is not None:
-            # Converte para lista caso o OpenCV tenha retornado um array do NumPy
-            lista_resultados = list(decoded_info) if isinstance(decoded_info, np.ndarray) else decoded_info
-
-            if len(lista_resultados) > 0 and lista_resultados[0]:
-                primeiro_resultado = str(lista_resultados[0]).strip()
-
-                if primeiro_resultado != "":
-                    st.session_state["resultado_final"] = primeiro_resultado
-                    st.rerun()
-                else:
-                    st.error("❌ A imagem foi processada, mas o conteúdo extraído veio vazio. Tente focar melhor.")
+        # --- BLINDAGEM ANTI-NUMPY DEFINITIVA ---
+        # 1. Avalia o retval sem gerar ambiguidade
+        sucesso_leitura = False
+        if decoded_info is not None:
+            if isinstance(retval, np.ndarray):
+                sucesso_leitura = bool(retval.any())
             else:
-                st.error("❌ Nenhum dado legível foi extraído. Tente aproximar mais o código.")
+                sucesso_leitura = bool(retval)
+
+        # 2. Se o OpenCV diz que leu algo, limpamos os dados convertendo para strings nativas
+        if sucesso_leitura:
+            strings_limpas = []
+            try:
+                # Transforma qualquer tipo de array/tupla em uma lista iterável do Python
+                for item in decoded_info:
+                    # Se o item interno for outro array do NumPy, extrai o primeiro elemento dele
+                    if isinstance(item, np.ndarray):
+                        if item.size > 0:
+                            strings_limpas.append(str(item.flat[0]).strip())
+                    else:
+                        strings_limpas.append(str(item).strip())
+            except Exception:
+                strings_limpas = []
+
+            # 3. Valida se encontramos alguma string que não seja vazia
+            codigo_encontrado = None
+            for texto in strings_limpas:
+                if texto and texto != "":
+                    codigo_encontrado = texto
+                    break
+
+            if codigo_encontrado:
+                st.session_state["resultado_final"] = codigo_encontrado
+                st.rerun()
+            else:
+                st.error(
+                    "❌ O scanner processou a imagem, mas não conseguiu extrair um texto válido. Tente aproximar mais e focar no código.")
         else:
-            # Se falhar, dá uma dica visual sem quebrar o sistema
+            # Se falhar a detecção básica
             st.error(
-                "❌ Código de barras não identificado na imagem. Certifique-se de que a foto não ficou tremida ou com reflexos e tente novamente.")
+                "❌ Código de barras não identificado. Certifique-se de que a foto não ficou tremida ou cortada e tente novamente.")
