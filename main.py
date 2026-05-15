@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 import av
 import cv2
 from pyzbar.pyzbar import decode
@@ -20,61 +20,54 @@ if st.session_state["ultimo_resultado"]:
 
 # 3. Tela do Scanner Ativo
 else:
-    # Função interna para processar os frames da câmera
-    def video_frame_callback(frame):
-        img = frame.to_ndarray(format="bgr24")
-
-        # Analisa a imagem atrás de códigos de barras
-        barcodes = decode(img)
-        for barcode in barcodes:
-            barcode_data = barcode.data.decode("utf-8")
-
-            # ATENÇÃO: Salvamos no dicionário global de estado interno do componente
-            # Isso é seguro e não trava o interpretador assíncrono
-            ctx.video_processor.resultado_temporario = barcode_data
-
-            # Desenha o retângulo verde na tela
-            (x, y, w, h) = barcode.rect
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(img, barcode_data, (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-
-    # Criamos uma classe boba de processador para carregar nossa variável de resultado
-    class ProcessadorDeCodigo:
+    # Criamos o processador herdando da classe base oficial do streamlit-webrtc
+    class BarcodeProcessor(VideoProcessorBase):
         def __init__(self):
             self.resultado_temporario = None
 
+        def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+            img = frame.to_ndarray(format="bgr24")
 
-    # Inicializa o componente de streaming com chave única e fixa
+            # Analisa o frame atrás de códigos de barras
+            barcodes = decode(img)
+            for barcode in barcodes:
+                barcode_data = barcode.data.decode("utf-8")
+
+                # Guarda o resultado no próprio objeto do processador
+                self.resultado_temporario = barcode_data
+
+                # Desenha o feedback visual na tela
+                (x, y, w, h) = barcode.rect
+                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(img, barcode_data, (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
+    # Inicializa o componente usando a factory nativa (Seguro contra erros de JSON)
     ctx = webrtc_streamer(
-        key="barcode-scanner-final-stable",
+        key="barcode-scanner-factory-stable",
         mode=WebRtcMode.SENDRECV,
-        video_frame_callback=video_frame_callback,
+        video_processor_factory=BarcodeProcessor,
         media_stream_constraints={
             "video": {"facingMode": "environment"},
             "audio": False
         },
         async_processing=True,
-        # Injeta nossa classe de persistência dentro do WebRTC
-        video_html_attrs={"video_processor": ProcessadorDeCodigo()},
         rtc_configuration={
             "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
         }
     )
 
-    # 4. O segredo da estabilidade: Verificação passiva a cada re-render
-    # Não há laços "while", o Streamlit apenas checa se a thread de vídeo mandou algo
-    if ctx.state.playing and hasattr(ctx, "video_processor") and ctx.video_processor:
-        # Verifica se a thread da câmera achou um código
+    # 4. Verificação passiva a cada ciclo do Streamlit (Sem travar com laços while)
+    if ctx.state.playing and ctx.video_processor:
+        # Acessa o processador instanciado pelo componente
         detectado = getattr(ctx.video_processor, "resultado_temporario", None)
 
         if detectado:
-            # Salva no estado global do Streamlit
+            # Salva no estado global e atualiza a tela para exibir a mensagem de sucesso
             st.session_state["ultimo_resultado"] = detectado
-            # Limpa o temporizador para evitar loops
             ctx.video_processor.resultado_temporario = None
             st.rerun()
         else:
