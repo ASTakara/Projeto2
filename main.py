@@ -1,90 +1,68 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
-import av
 import cv2
-import zxingcpp
+import numpy as np
 
-
-# ==========================================
-# 1. ESCOPO GLOBAL: Processador com ZXing e Câmera Frontal
-# ==========================================
-class BarcodeProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.codigo_detectado = None
-
-    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        img = frame.to_ndarray(format="bgr24")
-
-        # O ZXing faz a leitura direto no frame de vídeo
-        resultados = zxingcpp.read_barcodes(img)
-
-        if resultados:
-            for codigo in resultados:
-                texto_lido = codigo.text.strip()
-                if texto_lido:
-                    self.codigo_detectado = texto_lido
-
-                    # Desenha um feedback visual rápido na tela para o usuário saber que leu
-                    cv2.putText(img, "CODIGO LIDO!", (50, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
-                    break  # Foca no primeiro encontrado
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-
-# ==========================================
-# 2. INTERFACE E CONTROLE DE ESTADO
-# ==========================================
+# Configuração da Página
 st.set_page_config(page_title="Scanner de Código de Barras", layout="centered")
-st.title("📷 Scanner de Código de Barras (Câmera Frontal)")
+st.title("📷 Scanner de Código de Barras (Modo Foto)")
 
+# Inicializa o estado para guardar o resultado
 if "resultado_final" not in st.session_state:
     st.session_state["resultado_final"] = None
 
-# TELA A: Sucesso (Código capturado)
+# FLUXO A: Código processado com sucesso
 if st.session_state["resultado_final"]:
-    st.success("🎉 Código detectado com sucesso!")
-    st.code(st.session_state["resultado_final"], language="text")
+    st.success("🎉 Código capturado com sucesso!")
+    st.info(f"**Conteúdo do Código:** {st.session_state['resultado_final']}")
 
     if st.button("🔄 Escanear Próximo Código", use_container_width=True):
         st.session_state["resultado_final"] = None
         st.rerun()
 
-# TELA B: Câmera Ativa em Tempo Real
+# FLUXO B: Captura de Foto Estável
 else:
-    st.write("Aproxime o código de barras da câmera frontal (selfie).")
+    st.write("Tire uma foto nítida e aproximada do código de barras usando o botão abaixo:")
 
-    ctx = webrtc_streamer(
-        key="barcode-scanner-frontal-v1",
-        mode=WebRtcMode.SENDRECV,
-        video_processor_factory=BarcodeProcessor,
-        async_processing=True,
-        media_stream_constraints={
-            "video": {
-                "facingMode": "user",  # <--- ALTERADO PARA FORÇAR A CÂMERA FRONTAL (SELFIE)
-                "width": {"ideal": 1280},
-                "height": {"ideal": 720}
-            },
-            "audio": False
-        },
-        rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        }
-    )
+    # Componente oficial do Streamlit (usa a câmera frontal/padrão do dispositivo)
+    img_file = st.camera_input("Alinhe o código de barras na tela")
 
-    # Monitora e exibe o botão de confirmação assim que o ZXing lê o código
-    if ctx.state.playing and ctx.video_processor:
-        dado_temporario = getattr(ctx.video_processor, "codigo_detectado", None)
+    if img_file is not None:
+        # Converte a imagem capturada para o formato do OpenCV
+        bytes_data = img_file.getvalue()
+        cv_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
 
-        if dado_temporario:
-            st.success("🎯 Código identificado no vídeo!")
+        # Converte para escala de cinza para otimizar a leitura
+        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
 
-            # Botão destacado para enviar o dado pro Streamlit sem quebrar o asyncio
-            if st.button(f"📥 Confirmar Código: {dado_temporario}", type="primary", use_container_width=True):
-                st.session_state["resultado_final"] = dado_temporario
-                ctx.video_processor.codigo_detectado = None
-                st.rerun()
+        # Inicializa o detector nativo do OpenCV
+        detector = cv2.barcode.BarcodeDetector()
+
+        # Desempacota os 3 valores da API moderna do OpenCV
+        retval, decoded_info, points = detector.detectAndDecode(gray)
+
+        # --- BLINDAGEM ANTI-NUMPY ---
+        sucesso_leitura = False
+        if decoded_info is not None:
+            if isinstance(retval, np.ndarray):
+                sucesso_leitura = bool(retval.any())
+            else:
+                sucesso_leitura = bool(retval)
+
+        if sucesso_leitura:
+            # Garante que os dados virem uma lista comum do Python (saindo do NumPy)
+            lista_resultados = list(decoded_info) if isinstance(decoded_info, np.ndarray) else decoded_info
+
+            if len(lista_resultados) > 0 and lista_resultados[0]:
+                primeiro_resultado = str(lista_resultados[0]).strip()
+
+                if primeiro_resultado != "":
+                    st.session_state["resultado_final"] = primeiro_resultado
+                    st.rerun()
+                else:
+                    st.error("❌ A foto foi tirada, mas o conteúdo extraído veio vazio. Tente focar melhor.")
+            else:
+                st.error("❌ Não foi possível decodificar as barras desta foto. Tente aproximar mais.")
         else:
-            st.info("Aguardando leitura... Posicione o código em frente à câmera.")
-    else:
-        st.warning("Clique no botão **Start** acima para ligar a câmera frontal.")
+            # Se o OpenCV não encontrar nenhuma estrutura de código de barras
+            st.error(
+                "❌ Código de barras não identificado na foto. Centralize bem o código, evite tremer e tente novamente.")
