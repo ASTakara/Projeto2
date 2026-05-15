@@ -57,6 +57,13 @@ else:
             "audio": False
         },
         async_processing=True,
+        rtc_configuration={
+            "iceServers": [
+                {"urls": ["stun:stun.l.google.com:19302"]},
+                {"urls": ["stun:stun1.l.google.com:19302"]},
+                {"urls": ["stun:stun2.l.google.com:19302"]},
+            ]
+        }
     )
 
     st.subheader("Scanned Results:")
