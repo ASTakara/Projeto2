@@ -31,6 +31,7 @@ MarkupSafe==3.0.3
 mdurl==0.1.2
 narwhals==2.21.0
 numpy
+opencv-python-headless
 packaging==26.2
 pandas
 pillow==12.2.0
