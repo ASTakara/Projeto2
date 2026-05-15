@@ -40,17 +40,24 @@ else:
         # Desempacotando os 3 valores retornados pela API moderna do OpenCV
         retval, decoded_info, points = detector.detectAndDecode(gray)
 
-        # CORREÇÃO AQUI: Checagem segura que evita o erro de ambiguidade do NumPy
-        if retval and decoded_info is not None and len(decoded_info) > 0:
-            primeiro_resultado = decoded_info[0]
+        # CORREÇÃO DEFINITIVA: Usamos .any() caso o retval seja um array do NumPy,
+        # e tratamos o decoded_info de forma estritamente segura.
+        sucesso = retval.any() if isinstance(retval, np.ndarray) else bool(retval)
 
-            # Garante que o resultado não é uma string vazia
-            if primeiro_resultado and str(primeiro_resultado).strip() != "":
-                st.session_state["resultado_final"] = primeiro_resultado
-                st.rerun()
+        if sucesso and decoded_info is not None:
+            # Converte para lista caso o OpenCV tenha retornado um array do NumPy
+            lista_resultados = list(decoded_info) if isinstance(decoded_info, np.ndarray) else decoded_info
+
+            if len(lista_resultados) > 0 and lista_resultados[0]:
+                primeiro_resultado = str(lista_resultados[0]).strip()
+
+                if primeiro_resultado != "":
+                    st.session_state["resultado_final"] = primeiro_resultado
+                    st.rerun()
+                else:
+                    st.error("❌ A imagem foi processada, mas o conteúdo extraído veio vazio. Tente focar melhor.")
             else:
-                st.error(
-                    "❌ A imagem foi processada, mas nenhum texto válido foi extraído das barras. Tente aproximar mais.")
+                st.error("❌ Nenhum dado legível foi extraído. Tente aproximar mais o código.")
         else:
             # Se falhar, dá uma dica visual sem quebrar o sistema
             st.error(
