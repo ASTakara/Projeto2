@@ -2,35 +2,39 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 import av
 import cv2
-from pyzbar.pyzbar import decode
 
 
 # ==========================================
-# 1. ESCOPO GLOBAL: Processador de Alta Performance
+# 1. ESCOPO GLOBAL: Processador Utilizando OpenCV Nativo
 # ==========================================
 class BarcodeProcessor(VideoProcessorBase):
     def __init__(self):
         self.codigo_detectado = None
+        # Inicializa o detector nativo do OpenCV (Não quebra o asyncio)
+        self.detector = cv2.barcode.BarcodeDetector()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
 
-        # Converte para tons de cinza para melhorar a detecção do PyZbar em ambientes móveis
+        # Converte para tons de cinza (otimiza a leitura nativa)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # Executa o decode do código de barras
-        barcodes = decode(gray)
+        # Executa a detecção nativa do OpenCV
+        retval, decoded_info, decoded_type, points = self.detector.detectAndDecode(gray)
 
-        for barcode in barcodes:
-            barcode_data = barcode.data.decode("utf-8")
-            self.codigo_detectado = barcode_data
+        if retval:
+            for i, info in enumerate(decoded_info):
+                if info:  # Se a string contiver dados lidos
+                    self.codigo_detectado = info
 
-            # Desenha o retângulo verde e o texto na imagem do cliente
-            (x, y, w, h) = barcode.rect
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
-            cv2.putText(img, "OK! Clique abaixo", (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            break  # Foca apenas no primeiro código encontrado
+                    # Desenha o feedback visual se houver pontos de marcação
+                    if points is not None and len(points) > 0:
+                        pts = points[i].astype(int)
+                        for j in range(len(pts)):
+                            pt1 = tuple(pts[j])
+                            pt2 = tuple(pts[(j + 1) % len(pts)])
+                            cv2.line(img, pt1, pt2, (0, 255, 0), 3)
+                    break
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -46,7 +50,7 @@ if "resultado_final" not in st.session_state:
 
 # TELA A: Sucesso (Código capturado)
 if st.session_state["resultado_final"]:
-    st.success(f"🎉 Código detectado com sucesso!")
+    st.success("🎉 Código detectado com sucesso!")
     st.info(f"**Conteúdo:** {st.session_state['resultado_final']}")
 
     if st.button("🔄 Escanear Próximo Código", use_container_width=True):
@@ -55,11 +59,10 @@ if st.session_state["resultado_final"]:
 
 # TELA B: Câmera Ativa
 else:
-    st.write("Aproxime o código de barras da câmera traseira do celular.")
+    st.write("Aproxime o código de barras da câmera.")
 
-    # Instancia o Streamer WebRTC de forma totalmente isolada
     ctx = webrtc_streamer(
-        key="webrtc-barcode-final-v6",
+        key="barcode-scanner-native-opencv-v1",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=BarcodeProcessor,
         async_processing=True,
@@ -76,24 +79,18 @@ else:
         }
     )
 
-    # Bloco reativo de monitoramento
     if ctx.state.playing and ctx.video_processor:
-        # Puxa o dado diretamente do objeto em tempo de execução
         dado_temporario = getattr(ctx.video_processor, "codigo_detectado", None)
 
         if dado_temporario:
-            st.success("🎯 Código na memória!")
+            st.success("🎯 Leitura Efetuada!")
 
-            # Criamos o gatilho nativo para o usuário confirmar sem estourar o asyncio
+            # Botão nativo para o usuário avançar de fase sem quebrar o ecossistema do app
             if st.button(f"📥 Processar Código: {dado_temporario}", type="primary", use_container_width=True):
                 st.session_state["resultado_final"] = dado_temporario
                 ctx.video_processor.codigo_detectado = None
                 st.rerun()
         else:
-            st.info("Aguardando detecção... Certifique-se de que o código está bem iluminado.")
-
-            # Pequeno botão de apoio para forçar o Streamlit a ler o estado do frame atual
-            if st.button("🔄 Sincronizar Câmera / Forçar Leitura", use_container_width=True):
-                st.rerun()
+            st.info("Aguardando detecção... Certifique-se de alinhar o código de barras.")
     else:
         st.warning("Clique no botão **Start** acima para liberar o acesso à câmera.")
