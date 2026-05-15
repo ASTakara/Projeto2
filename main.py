@@ -8,19 +8,18 @@ import time
 
 st.title("Mobile Barcode Scanner")
 
-# 1. Gerencia o estado do resultado de forma segura usando a sintaxe de dicionário
+# Inicialização segura do estado
 if "scanned_result" not in st.session_state:
     st.session_state["scanned_result"] = None
 
 if "scanner_session_id" not in st.session_state:
     st.session_state["scanner_session_id"] = int(time.time())
 
-# Containers fixos na tela
 container_camera = st.empty()
 container_resultado = st.empty()
 container_botao = st.empty()
 
-# 2. SE JÁ FOI ESCANEADO: Mostra resultado e botão de reset
+# 1. SE JÁ FOI ESCANEADO: Mostra o resultado e o botão
 if st.session_state.get("scanned_result"):
     container_resultado.success(f"✅ Lido com sucesso: {st.session_state['scanned_result']}")
 
@@ -30,9 +29,15 @@ if st.session_state.get("scanned_result"):
             st.session_state["scanner_session_id"] = int(time.time())
             st.rerun()
 
-# 3. SE NÃO FOI ESCANEADO: Ativa o scanner normalmente
+# 2. SE NÃO FOI ESCANEADO: Abre o scanner
 else:
-    result_queue = queue.Queue()
+    # Usamos o st.cache_resource para garantir que a fila não se perca entre renders rápidos
+    @st.cache_resource
+    def get_queue():
+        return queue.Queue()
+
+
+    result_queue = get_queue()
 
 
     def video_frame_callback(frame):
@@ -53,14 +58,11 @@ else:
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-    # SOLUÇÃO DO ATTRIBUTE-ERROR:
-    # Usamos .get() com um timestamp atual de "reserva". Se a variável sumir, o app não quebra!
     session_id = st.session_state.get("scanner_session_id", int(time.time()))
-    unique_key = f"barcode-scanner-{session_id}"
 
     with container_camera.container():
         ctx = webrtc_streamer(
-            key=unique_key,
+            key=f"barcode-scanner-{session_id}",
             mode=WebRtcMode.SENDRECV,
             video_frame_callback=video_frame_callback,
             media_stream_constraints={
@@ -69,25 +71,22 @@ else:
             },
             async_processing=True,
             rtc_configuration={
-                "iceServers": [
-                    {"urls": ["stun:stun.l.google.com:19302"]},
-                    {"urls": ["stun:stun1.l.google.com:19302"]}
-                ]
+                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
             }
         )
 
     container_resultado.subheader("Scanned Results:")
 
-    # Loop de escuta ativo
-    while ctx.state.playing:
+    # Checagem passiva (sem loop while infinito bloqueando a CPU)
+    if ctx.state.playing:
         try:
-            result = result_queue.get(timeout=0.5)
-
+            # Tenta pegar um resultado de forma direta e rápida
+            result = result_queue.get_nowait()
             if result:
                 st.session_state["scanned_result"] = result
                 container_camera.empty()
                 st.rerun()
-                break
-
         except queue.Empty:
-            continue
+            # Se a fila estiver vazia, adicionamos um pequeno botão de "Atualizar Interface"
+            # ou simplesmente deixamos o webrtc atualizar nativamente
+            st.caption("Aguardando leitura do código de barras...")
