@@ -7,7 +7,7 @@ import queue
 
 st.title("Mobile Barcode Scanner")
 
-# 1. Estados essenciais na memória (Seguros e persistentes)
+# 1. Estados estáveis na memória
 if "scanner_ativo" not in st.session_state:
     st.session_state["scanner_ativo"] = True
 
@@ -15,81 +15,86 @@ if "ultimo_resultado" not in st.session_state:
     st.session_state["ultimo_resultado"] = None
 
 
-# Criamos a fila no cache para que ela nunca seja destruída entre os ciclos de render
+# Garante que a fila persista sem reiniciar
 @st.cache_resource
-def obter_fila():
+def obter_fila_estavel():
     return queue.Queue()
 
 
-result_queue = obter_fila()
+result_queue = obter_fila_estavel()
 
-# 2. Interface de exibição do resultado se houver um código escaneado
+# 2. SE JÁ LERU: Exibe o resultado e pausa a câmera
 if st.session_state["ultimo_resultado"]:
     st.success(f"✅ Lido com sucesso: {st.session_state['ultimo_resultado']}")
 
     if st.button("🔄 Escanear Próximo Código"):
-        # Esvazia a fila antiga para não ler dados fantasmas
+        # Limpa restos que ficaram na fila antes de reativar
         while not result_queue.empty():
             try:
                 result_queue.get_nowait()
             except queue.Empty:
                 break
-
-        # Limpa o resultado anterior e reativa a permissão de leitura
         st.session_state["ultimo_resultado"] = None
         st.session_state["scanner_ativo"] = True
         st.rerun()
 
+# 3. SE NÃO LEU: Mantém o Scanner ativo na tela
+else:
+    def video_frame_callback(frame):
+        img = frame.to_ndarray(format="bgr24")
 
-# 3. Função de processamento de imagem
-def video_frame_callback(frame):
-    img = frame.to_ndarray(format="bgr24")
+        # Só processa se o estado do app permitir leitura
+        if st.session_state.get("scanner_ativo", True):
+            barcodes = decode(img)
+            for barcode in barcodes:
+                barcode_data = barcode.data.decode("utf-8")
 
-    # SÓ tenta ler se o scanner estiver ativamente esperando uma leitura
-    if st.session_state.get("scanner_ativo", True):
-        barcodes = decode(img)
+                # Alimenta a fila compartilhada
+                result_queue.put(barcode_data)
 
-        for barcode in barcodes:
-            barcode_data = barcode.data.decode("utf-8")
-            barcode_type = barcode.type
+                # Feedback visual direto no frame do vídeo
+                (x, y, w, h) = barcode.rect
+                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(img, barcode_data, (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-            # Envia para a fila
-            result_queue.put(f"{barcode_type}: {barcode_data}")
-
-            # Desenho estético do box
-            (x, y, w, h) = barcode.rect
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(img, barcode_data, (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-    return av.VideoFrame.from_ndarray(img, format="bgr24")
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# 4. Componente estático (Chave fixa impede o colapso do asyncio no Python 3.14)
-ctx = webrtc_streamer(
-    key="barcode-scanner-fixed-stable",
-    mode=WebRtcMode.SENDRECV,
-    video_frame_callback=video_frame_callback,
-    media_stream_constraints={
-        "video": {"facingMode": "environment"},
-        "audio": False
-    },
-    async_processing=True,
-    rtc_configuration={
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-    }
-)
+    # Chave 100% estática para blindar o asyncio contra o bug do Python 3.14
+    ctx = webrtc_streamer(
+        key="barcode-scanner-engine-fixed",
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=video_frame_callback,
+        media_stream_constraints={
+            "video": {"facingMode": "environment"},
+            "audio": False
+        },
+        async_processing=True,
+        rtc_configuration={
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        }
+    )
 
-# 5. Escuta de resultados sem o loop "while" agressivo
-if ctx.state.playing and st.session_state["scanner_ativo"]:
-    try:
-        # Tenta pegar o resultado de forma imediata (sem travar a CPU do servidor)
-        result = result_queue.get_nowait()
-        if result:
-            # Desativa o scanner para ignorar novas leituras na thread paralela
-            st.session_state["scanner_ativo"] = False
-            # Salva o resultado encontrado
-            st.session_state["ultimo_resultado"] = result
-            st.rerun()
-    except queue.Empty:
-        st.caption("Aguardando leitura do código de barras...")
+    st.subheader("Scanned Results:")
+    status_placeholder = st.empty()
+
+    # O segredo: Ouvinte seguro da fila que respeita a conexão do webrtc
+    if ctx.state.playing:
+        status_placeholder.info("📷 Scanner ativo. Aproxime o código de barras...")
+
+        # Um loop simples interno, limitado apenas enquanto o player de vídeo estiver aberto
+        while ctx.state.playing:
+            try:
+                # Aguarda até 0.5 segundos por um dado na fila sem travar a thread principal
+                resultado_capturado = result_queue.get(timeout=0.5)
+
+                if resultado_capturado:
+                    st.session_state["scanner_ativo"] = False
+                    st.session_state["ultimo_resultado"] = resultado_capturado
+                    st.rerun()
+                    break
+            except queue.Empty:
+                continue
+    else:
+        status_placeholder.warning("Clique no botão 'Start' acima para ligar a câmera.")
