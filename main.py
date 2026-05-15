@@ -7,17 +7,15 @@ import queue
 
 st.title("Mobile Barcode Scanner")
 
-# Criamos containers vazios para controlar a ordem visual da tela de forma fixa
+# Containers para organizar a tela dinamicamente
 container_camera = st.empty()
 container_resultado = st.empty()
 container_botao = st.empty()
 
-# Inicializa as filas e variáveis apenas uma vez na sessão
-if "fila_resultados" not in st.session_state:
-    st.session_state["fila_resultados"] = queue.Queue()
+# Criamos a fila no escopo correto para garantir a leitura em tempo real
+result_queue = queue.Queue()
 
 
-# Função de callback da câmera
 def video_frame_callback(frame):
     img = frame.to_ndarray(format="bgr24")
     barcodes = decode(img)
@@ -26,9 +24,10 @@ def video_frame_callback(frame):
         barcode_data = barcode.data.decode("utf-8")
         barcode_type = barcode.type
 
-        # Envia para a fila global da sessão
-        st.session_state["fila_resultados"].put(f"{barcode_type}: {barcode_data}")
+        # Envia o dado para a fila local (rápido e seguro entre threads)
+        result_queue.put(f"{barcode_type}: {barcode_data}")
 
+        # Desenha na tela do player de vídeo
         (x, y, w, h) = barcode.rect
         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
         cv2.putText(img, barcode_data, (x, y - 10),
@@ -37,7 +36,7 @@ def video_frame_callback(frame):
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# Renderiza o Scanner dentro do container de câmera
+# Renderiza o Scanner dentro de seu respectivo container
 with container_camera.container():
     ctx = webrtc_streamer(
         key="barcode-scanner-static",
@@ -58,27 +57,25 @@ with container_camera.container():
 
 container_resultado.subheader("Scanned Results:")
 
-# Loop de escuta ativo enquanto a câmera estiver ligada
+# Loop de leitura (Roda enquanto a câmera estiver ativa no navegador)
 while ctx.state.playing:
     try:
-        # Puxa o dado da fila armazenada na sessão
-        result = st.session_state["fila_resultados"].get(timeout=1.0)
+        # Escuta a fila local sem bloquear o carregamento da página
+        result = result_queue.get(timeout=0.5)
 
         if result:
-            # 1. Mostra o resultado imediatamente na tela
-            container_resultado.success(f"✅ Encontrado: {result}")
-
-            # 2. Desliga visualmente a câmera limpando o container dela
+            # 1. Limpa o container da câmera (desliga o vídeo na tela)
             container_camera.empty()
 
-            # 3. Cria o botão de reiniciar dentro do container de botões
+            # 2. Exibe o resultado de sucesso fixo na tela
+            container_resultado.success(f"✅ Lido com sucesso: {result}")
+
+            # 3. Exibe o botão para reiniciar o fluxo
             with container_botao:
-                if st.button("🔄 Ativar Scanner Novamente"):
-                    # Limpa a fila antiga
-                    st.session_state["fila_resultados"] = queue.Queue()
+                if st.button("🔄 Escanear Próximo Código"):
                     st.rerun()
 
-            # Interrompe o loop do código atual
+            # Rompe o loop while para congelar o estado do app
             break
 
     except queue.Empty:
