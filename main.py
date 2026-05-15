@@ -21,7 +21,7 @@ if st.session_state["resultado_final"]:
 
 # FLUXO B: Captura de Foto/Frame Estável
 else:
-    st.write("Tire uma foto nítida e aproximada do código de barras usando o botão abaixo:")
+    st.write("Tire uma foto nítida e aproximada do código de barras:")
 
     # Componente oficial e nativo do Streamlit para câmeras
     img_file = st.camera_input("Alinhe o código de barras")
@@ -37,13 +37,20 @@ else:
         # Inicializa o detector nativo do OpenCV
         detector = cv2.barcode.BarcodeDetector()
 
-        # CORREÇÃO AQUI: Desempacotando apenas os 3 valores retornados pela API moderna do OpenCV
+        # Desempacotando os 3 valores retornados pela API moderna do OpenCV
         retval, decoded_info, points = detector.detectAndDecode(gray)
 
-        if retval and decoded_info and decoded_info[0]:
-            # Sucesso absoluto na leitura!
-            st.session_state["resultado_final"] = decoded_info[0]
-            st.rerun()
+        # CORREÇÃO AQUI: Checagem segura que evita o erro de ambiguidade do NumPy
+        if retval and decoded_info is not None and len(decoded_info) > 0:
+            primeiro_resultado = decoded_info[0]
+
+            # Garante que o resultado não é uma string vazia
+            if primeiro_resultado and str(primeiro_resultado).strip() != "":
+                st.session_state["resultado_final"] = primeiro_resultado
+                st.rerun()
+            else:
+                st.error(
+                    "❌ A imagem foi processada, mas nenhum texto válido foi extraído das barras. Tente aproximar mais.")
         else:
             # Se falhar, dá uma dica visual sem quebrar o sistema
             st.error(
