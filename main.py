@@ -24,14 +24,13 @@ if st.session_state["resultado_final"]:
 else:
     st.write("Clique no botão abaixo para abrir a câmera traseira do seu celular:")
 
-    # st.file_uploader configurado para acionar diretamente a câmera traseira no mobile
+    # st.file_uploader configurado corretamente para a API do Streamlit
     img_file = st.file_uploader(
         "Tire uma foto nítida do código de barras",
         type=["jpg", "jpeg", "png"],
-        accept_all_files=False,
+        accept_multiple_files=False,  # <--- CORRIGIDO AQUI
         key="camera_traseira_nativa"
     )
-
     if img_file is not None:
         # Converte a imagem enviada para o formato do OpenCV
         bytes_data = img_file.getvalue()
