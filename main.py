@@ -2,11 +2,10 @@ import streamlit as st
 import cv2
 import numpy as np
 import zxingcpp
-import streamlit.components.v1 as components
 
 # Configuração da Página
 st.set_page_config(page_title="Scanner de Código de Barras", layout="centered")
-st.title("📷 Scanner de Código de Barras de Alta Precisão")
+st.title("📷 Scanner de Código de Barras")
 
 # Inicializa o estado para guardar o resultado
 if "resultado_final" not in st.session_state:
@@ -21,39 +20,24 @@ if st.session_state["resultado_final"]:
         st.session_state["resultado_final"] = None
         st.rerun()
 
-# FLUXO B: Captura de Foto/Frame Estável (COM FORÇAMENTO DE CÂMERA TRASEIRA)
+# FLUXO B: Captura usando o App de Câmera Nativo do Celular (Sempre Traseira)
 else:
-    st.write("Tire uma foto nítida e aproximada do código de barras:")
+    st.write("Clique no botão abaixo para abrir a câmera traseira do seu celular:")
 
-    # TRUQUE DE MESTRE: Script injetado para forçar o navegador a priorizar a câmera traseira ("environment")
-    components.html(
-        """
-        <script>
-            // Sobrescreve a API de mídia do navegador antes do componente carregar
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-                navigator.mediaDevices.getUserMedia = function(constraints) {
-                    if (constraints && constraints.video) {
-                        // Força o modo de ambiente (câmera traseira) nas requisições de vídeo
-                        constraints.video.facingMode = { ideal: "environment" };
-                    }
-                    return origGetUserMedia(constraints);
-                };
-            }
-        </script>
-        """,
-        height=0,
-        width=0
+    # st.file_uploader configurado para acionar diretamente a câmera traseira no mobile
+    img_file = st.file_uploader(
+        "Tire uma foto nítida do código de barras",
+        type=["jpg", "jpeg", "png"],
+        accept_all_files=False,
+        key="camera_traseira_nativa"
     )
 
-    # Componente oficial de câmera
-    img_file = st.camera_input("Centralize o código de barras na tela")
-
     if img_file is not None:
+        # Converte a imagem enviada para o formato do OpenCV
         bytes_data = img_file.getvalue()
         cv_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
 
-        # Executa o ZXing
+        # Executa a leitura com o ZXing (Alta precisão)
         resultados = zxingcpp.read_barcodes(cv_img)
 
         if resultados:
@@ -63,7 +47,11 @@ else:
                     st.session_state["resultado_final"] = texto_lido
                     st.rerun()
             st.error(
-                "❌ O scanner detectou a região do código, mas não conseguiu decodificar os números. Tente focar melhor.")
+                "❌ O scanner detectou a região do código, mas não conseguiu decodificar os números. Tente tirar a foto um pouco mais de longe ou melhore a iluminação.")
         else:
             st.error(
-                "❌ Nenhum código de barras identificado. Certifique-se de que a foto está bem focada, sem sombras fortes sobre as barras e tente novamente.")
+                "❌ Nenhum código de barras identificado. Certifique-se de que a foto está bem focada, sem reflexos brilhantes sobre as barras e tente novamente.")
+
+    # Dica útil para o usuário na tela
+    st.caption(
+        "💡 Dica: Ao clicar no botão, escolha a opção 'Câmera' ou 'Tirar Foto'. O sistema usará os recursos automáticos de foco do seu aparelho.")
