@@ -13,7 +13,6 @@ if "scanned_result" not in st.session_state:
     st.session_state["scanned_result"] = None
 
 if "scanner_session_id" not in st.session_state:
-    # Cria uma ID única inicial usando o timestamp atual
     st.session_state["scanner_session_id"] = int(time.time())
 
 # Containers fixos na tela
@@ -53,10 +52,11 @@ else:
             cv2.putText(img, barcode_data, (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
+        # LINHA CORRIGIDA: Agora está dentro da função video_frame_callback
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-    return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-    # A mágica está aqui: a key muda a cada clique de reiniciar (ex: barcode-scanner-1715800000)
+    # A key muda a cada clique de reiniciar para limpar o cache do navegador
     unique_key = f"barcode-scanner-{st.session_state['scanner_session_id']}"
 
     with container_camera.container():
