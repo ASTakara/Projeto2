@@ -23,7 +23,7 @@ if st.session_state["resultado_final"]:
 else:
     st.write("Tire uma foto nítida e aproximada do código de barras usando o botão abaixo:")
 
-    # Componente oficial do Streamlit (usa a câmera frontal/padrão do dispositivo)
+    # Componente oficial do Streamlit (Câmera frontal por padrão)
     img_file = st.camera_input("Alinhe o código de barras na tela")
 
     if img_file is not None:
@@ -37,31 +37,36 @@ else:
         # Inicializa o detector nativo do OpenCV
         detector = cv2.barcode.BarcodeDetector()
 
-        # Desempacota os 3 valores da API moderna do OpenCV
+        # Executa a detecção
         retval, decoded_info, points = detector.detectAndDecode(gray)
 
-        # --- BLINDAGEM ANTI-NUMPY ---
-        sucesso_leitura = False
-        if decoded_info is not None:
-            if isinstance(retval, np.ndarray):
-                sucesso_leitura = bool(retval.any())
-            else:
-                sucesso_leitura = bool(retval)
+        # --- BLINDAGEM TOTAL ANTI-NUMPY ---
+        # Verificamos a existência do decoded_info usando referências que não disparam o erro
+        tem_conteudo = False
+        try:
+            if isinstance(decoded_info, np.ndarray):
+                tem_conteudo = decoded_info.size > 0 and any(decoded_info.flat)
+            elif decoded_info is not None:
+                tem_conteudo = len(decoded_info) > 0
+        except Exception:
+            tem_conteudo = False
 
-        if sucesso_leitura:
-            # Garante que os dados virem uma lista comum do Python (saindo do NumPy)
-            lista_resultados = list(decoded_info) if isinstance(decoded_info, np.ndarray) else decoded_info
-
-            if len(lista_resultados) > 0 and lista_resultados[0]:
-                primeiro_resultado = str(lista_resultados[0]).strip()
-
-                if primeiro_resultado != "":
-                    st.session_state["resultado_final"] = primeiro_resultado
-                    st.rerun()
+        if tem_conteudo:
+            # Força tudo para uma lista pura de strings do Python, matando o NumPy aqui
+            lista_limpa = []
+            for item in decoded_info:
+                if isinstance(item, np.ndarray):
+                    if item.size > 0:
+                        lista_limpa.append(str(item.flat[0]).strip())
                 else:
-                    st.error("❌ A foto foi tirada, mas o conteúdo extraído veio vazio. Tente focar melhor.")
+                    lista_limpa.append(str(item).strip())
+
+            # Valida o primeiro resultado encontrado
+            if len(lista_limpa) > 0 and lista_limpa[0] != "":
+                st.session_state["resultado_final"] = lista_limpa[0]
+                st.rerun()
             else:
-                st.error("❌ Não foi possível decodificar as barras desta foto. Tente aproximar mais.")
+                st.error("❌ A foto foi tirada, mas o conteúdo decodificado veio em branco. Tente focar melhor.")
         else:
             # Se o OpenCV não encontrar nenhuma estrutura de código de barras
             st.error(
