@@ -23,9 +23,8 @@ if st.session_state["resultado_final"]:
 else:
     st.write("Tire uma foto nítida e aproximada do código de barras usando o botão abaixo:")
 
-    # Componente oficial e nativo do Streamlit para câmeras (Mobile e Desktop)
-    # Abre diretamente o app de câmera nativo do celular com foco automático
-    img_file = st.camera_input("Alinhe o código de barras na linha horizontal")
+    # Componente oficial e nativo do Streamlit para câmeras
+    img_file = st.camera_input("Alinhe o código de barras")
 
     if img_file is not None:
         # Converte a imagem capturada para o formato do OpenCV
@@ -35,11 +34,13 @@ else:
         # Converte para escala de cinza para otimizar
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
 
-        # Inicializa o detector nativo e robusto do OpenCV
+        # Inicializa o detector nativo do OpenCV
         detector = cv2.barcode.BarcodeDetector()
-        retval, decoded_info, decoded_type, points = detector.detectAndDecode(gray)
 
-        if retval and decoded_info[0]:
+        # CORREÇÃO AQUI: Desempacotando apenas os 3 valores retornados pela API moderna do OpenCV
+        retval, decoded_info, points = detector.detectAndDecode(gray)
+
+        if retval and decoded_info and decoded_info[0]:
             # Sucesso absoluto na leitura!
             st.session_state["resultado_final"] = decoded_info[0]
             st.rerun()
