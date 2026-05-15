@@ -3,6 +3,7 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 import av
 import cv2
 from pyzbar.pyzbar import decode
+import time
 
 
 # ==========================================
@@ -20,10 +21,10 @@ class BarcodeProcessor(VideoProcessorBase):
         for barcode in barcodes:
             barcode_data = barcode.data.decode("utf-8")
 
-            # Guarda o resultado no próprio objeto da instância (no backend)
+            # ATENÇÃO: Guarda o resultado
             self.resultado_temporario = barcode_data
 
-            # Feedback visual (Retângulo verde e texto)
+            # Feedback visual na tela da câmera
             (x, y, w, h) = barcode.rect
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(img, barcode_data, (x, y - 10),
@@ -37,13 +38,16 @@ class BarcodeProcessor(VideoProcessorBase):
 # ==========================================
 st.title("Mobile Barcode Scanner")
 
-# Inicialização limpa do Session State
+# Inicialização do Session State
 if "ultimo_resultado" not in st.session_state:
     st.session_state["ultimo_resultado"] = None
 
-# FLUXO A: Código detectado com sucesso -> Pausa e exibe resultado
+# FLUXO A: Código detectado com sucesso -> Exibe resultado fora da câmera
 if st.session_state["ultimo_resultado"]:
     st.success(f"✅ Lido com sucesso: {st.session_state['ultimo_resultado']}")
+
+    # Aqui você pode colocar sua lógica de banco de dados, API, etc.
+    st.json({"status": "Processado", "conteudo": st.session_state["ultimo_resultado"]})
 
     if st.button("🔄 Escanear Próximo Código"):
         st.session_state["ultimo_resultado"] = None
@@ -51,34 +55,42 @@ if st.session_state["ultimo_resultado"]:
 
 # FLUXO B: Scanner Ativo
 else:
-    # Inicializa o componente usando a factory global (100% imune a erros de JSON)
     ctx = webrtc_streamer(
-        key="barcode-scanner-factory-stable",
+        key="barcode-scanner-final-v3",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=BarcodeProcessor,
         media_stream_constraints={
-            "video": {"facingMode": "environment"},  # Força a câmera traseira no celular
+            "video": {"facingMode": "environment"},
             "audio": False
         },
         async_processing=True,
         rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]  # Servidor STUN público do Google
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
         }
     )
 
-    # Verificação passiva (Executada a cada ciclo de renderização do Streamlit)
-    if ctx.state.playing and ctx.video_processor:
-        # Captura o dado assim que a thread paralela do WebRTC preencher a variável
-        detectado = getattr(ctx.video_processor, "resultado_temporario", None)
+    # Criamos um container de texto dinâmico para feedback do usuário
+    status_placeholder = st.empty()
 
-        if detectado:
-            # Salva no estado global do app
-            st.session_state["ultimo_resultado"] = detectado
-            # Reseta a variável do processador para evitar re-triggers acidentais
-            ctx.video_processor.resultado_temporario = None
-            # Recarrega o app para mudar instantaneamente para o FLUXO A
-            st.rerun()
-        else:
-            st.info("📷 Scanner ativo. Aproxime o código de barras da câmera...")
+    # Se a câmera estiver ligada, criamos uma escuta ultra-leve baseada em fragmento/loop controlado
+    if ctx.state.playing and ctx.video_processor:
+        status_placeholder.info("📷 Câmera ativa. Aproxime o código de barras...")
+
+        # Fazemos pequenas verificações repetidas. Como não há processamento pesado aqui dentro
+        # (o processamento é feito na thread do WebRTC), isso não vai travar o Python 3.14.
+        for _ in range(30):  # Tenta checar por alguns segundos nesta renderização
+            detectado = getattr(ctx.video_processor, "resultado_temporario", None)
+
+            if detectado:
+                # Se achou, salva no estado global do Streamlit e força o encerramento do fluxo b
+                st.session_state["ultimo_resultado"] = detectado
+                ctx.video_processor.resultado_temporario = None
+                st.rerun()
+                break
+
+            time.sleep(0.1)  # Aguarda 100ms antes da próxima checagem passiva
+
+        # Força o Streamlit a dar um "refresh" na página para continuar escutando a thread do vídeo
+        st.rerun()
     else:
-        st.warning("Clique no botão 'Start' para iniciar a câmera.")
+        status_placeholder.warning("Clique no botão 'Start' para iniciar a câmera.")
