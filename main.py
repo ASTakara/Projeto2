@@ -9,6 +9,9 @@ import queue
 if "scanned_result" not in st.session_state:
     st.session_state.scanned_result = None
 
+if "scanner_key_counter" not in st.session_state:
+    st.session_state["scanner_key_counter"] = 0
+
 st.title("Mobile Barcode Scanner")
 
 # 2. Se já encontramos um resultado, paramos o scanner e mostramos o botão de reiniciar
@@ -47,7 +50,8 @@ else:
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
     # 3. Gerando uma chave dinâmica única para cada tentativa (ex: "barcode-scanner-0", "barcode-scanner-1"...)
-    dynamic_key = f"barcode-scanner-{st.session_state.scanner_key_counter}"
+    counter = st.session_state.get("scanner_key_counter", 0)
+    dynamic_key = f"barcode-scanner-{counter}"
 
     # WebRTC Streamer configuration
     ctx = webrtc_streamer(
