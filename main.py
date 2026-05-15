@@ -8,7 +8,7 @@ import time
 
 st.title("Mobile Barcode Scanner")
 
-# 1. Gerencia o estado do resultado e a chave única do scanner
+# 1. Gerencia o estado do resultado de forma segura usando a sintaxe de dicionário
 if "scanned_result" not in st.session_state:
     st.session_state["scanned_result"] = None
 
@@ -21,14 +21,12 @@ container_resultado = st.empty()
 container_botao = st.empty()
 
 # 2. SE JÁ FOI ESCANEADO: Mostra resultado e botão de reset
-if st.session_state["scanned_result"]:
+if st.session_state.get("scanned_result"):
     container_resultado.success(f"✅ Lido com sucesso: {st.session_state['scanned_result']}")
 
     with container_botao:
         if st.button("🔄 Escanear Próximo Código"):
-            # Limpa o resultado anterior
             st.session_state["scanned_result"] = None
-            # Força uma ID de conexão WebRTC totalmente nova
             st.session_state["scanner_session_id"] = int(time.time())
             st.rerun()
 
@@ -52,12 +50,13 @@ else:
             cv2.putText(img, barcode_data, (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        # LINHA CORRIGIDA: Agora está dentro da função video_frame_callback
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-    # A key muda a cada clique de reiniciar para limpar o cache do navegador
-    unique_key = f"barcode-scanner-{st.session_state['scanner_session_id']}"
+    # SOLUÇÃO DO ATTRIBUTE-ERROR:
+    # Usamos .get() com um timestamp atual de "reserva". Se a variável sumir, o app não quebra!
+    session_id = st.session_state.get("scanner_session_id", int(time.time()))
+    unique_key = f"barcode-scanner-{session_id}"
 
     with container_camera.container():
         ctx = webrtc_streamer(
@@ -85,11 +84,8 @@ else:
             result = result_queue.get(timeout=0.5)
 
             if result:
-                # Salva o resultado no estado global do Streamlit
                 st.session_state["scanned_result"] = result
-                # Limpa a câmera da tela imediatamente
                 container_camera.empty()
-                # Recarrega o app para entrar no bloco do 'if' (destruindo o webrtc antigo)
                 st.rerun()
                 break
 
