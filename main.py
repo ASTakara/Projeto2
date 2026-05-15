@@ -46,10 +46,12 @@ else:
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+    # 3. Gerando uma chave dinâmica única para cada tentativa (ex: "barcode-scanner-0", "barcode-scanner-1"...)
+    dynamic_key = f"barcode-scanner-{st.session_state.scanner_key_counter}"
 
     # WebRTC Streamer configuration
     ctx = webrtc_streamer(
-        key="barcode-scanner",
+        key=dynamic_key,
         mode=WebRtcMode.SENDRECV,
         video_frame_callback=video_frame_callback,
         media_stream_constraints={
