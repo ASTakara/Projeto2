@@ -3,11 +3,11 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 import av
 import cv2
 from pyzbar.pyzbar import decode
-import streamlit.components.v1 as components
+from streamlit_autorefresh import st_autorefresh
 
 
 # ==========================================
-# 1. ESCOPO GLOBAL: Processador de Vídeo
+# 1. ESCOPO GLOBAL: Processador de Vídeo Limpo
 # ==========================================
 class BarcodeProcessor(VideoProcessorBase):
     def __init__(self):
@@ -16,18 +16,17 @@ class BarcodeProcessor(VideoProcessorBase):
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
 
-        # Só processa se ainda não capturou nada neste ciclo
-        if self.resultado is None:
-            barcodes = decode(img)
-            for barcode in barcodes:
-                barcode_data = barcode.data.decode("utf-8")
-                self.resultado = barcode_data
+        # Analisa o frame sem travas na thread de vídeo
+        barcodes = decode(img)
+        for barcode in barcodes:
+            barcode_data = barcode.data.decode("utf-8")
+            self.resultado = barcode_data
 
-                # Feedback visual na tela
-                (x, y, w, h) = barcode.rect
-                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(img, barcode_data, (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            # Desenha o feedback visual (retângulo verde e texto)
+            (x, y, w, h) = barcode.rect
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.putText(img, barcode_data, (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -35,32 +34,25 @@ class BarcodeProcessor(VideoProcessorBase):
 # ==========================================
 # 2. CONFIGURAÇÃO DA INTERFACE
 # ==========================================
-st.title("Mobile Barcode Scanner Pro")
+st.title("Mobile Barcode Scanner")
 
-# Inicializa as variáveis de controle no Session State
 if "ultimo_resultado" not in st.session_state:
     st.session_state["ultimo_resultado"] = None
-if "scanner_id" not in st.session_state:
-    st.session_state["scanner_id"] = 0  # Usado para resetar o componente mudando a KEY
 
-# FLUXO A: Código detectado com sucesso -> Para tudo e exibe
-if st.session_state["ultimo_resultado"] is not None:
+# FLUXO A: Código detectado com sucesso
+if st.session_state["ultimo_resultado"]:
     st.success(f"✅ Lido com sucesso: {st.session_state['ultimo_resultado']}")
     st.json({"status": "Processado", "conteudo": st.session_state["ultimo_resultado"]})
 
     if st.button("🔄 Escanear Próximo Código"):
         st.session_state["ultimo_resultado"] = None
-        # Incrementa o ID para forçar o Streamlit a destruir o componente velho e criar um novo do zero
-        st.session_state["scanner_id"] += 1
         st.rerun()
 
 # FLUXO B: Câmera Ativa para Escaneamento
 else:
-    # A KEY muda dinamicamente quando clicamos em "Próximo Código", evitando travar o WebRTC
-    component_key = f"barcode-scanner-id-{st.session_state['scanner_id']}"
-
+    # O componente WebRTC fica completamente estático aqui
     ctx = webrtc_streamer(
-        key=component_key,
+        key="barcode-scanner-autorefresh-v1",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=BarcodeProcessor,
         media_stream_constraints={
@@ -73,45 +65,19 @@ else:
         }
     )
 
-    # Monitoramento passivo seguro
     if ctx.state.playing and ctx.video_processor:
-        st.info("📷 Câmera ativa. Posicione o código de barras na tela.")
+        st.info("📷 Câmera ativa. Aproxime o código de barras...")
 
-        # Captura o dado gerado na thread paralela
+        # O SEGREDO: Configura o Streamlit para re-renderizar a página a cada 1000ms (1 segundo)
+        # Isso substitui os loops pesados e os scripts de clique do JS que travavam o app.
+        st_autorefresh(interval=1000, limit=1000, key="scanner_refresh")
+
+        # Checa se o processador capturou o código
         detectado = getattr(ctx.video_processor, "resultado", None)
 
-        if detectado is not None:
-            # Salva o resultado no estado global imediatamente
+        if detectado:
             st.session_state["ultimo_resultado"] = detectado
-
-            # Limpa o dado do processador para garantir que ele pare de processar novos frames
             ctx.video_processor.resultado = None
-
-            # Em vez de reload geral ou st.rerun puro de dentro do loop assíncrono,
-            # usamos um clique simulado via JS em um botão invisível do Streamlit.
-            # Essa é a forma mais segura de atualizar a tela sem crashar o asyncio.
-            if st.button(
-                    "⚠️ Clique aqui para confirmar a leitura" if st.checkbox("Mostrar botão de segurança (opcional)",
-                                                                             value=False) else "Processando..."):
-                st.rerun()
-
-            # Executa o gatilho automático apenas UMA vez injetando o clique no botão acima
-            components.html(
-                """
-                <script>
-                    setTimeout(function() {
-                        var buttons = window.parent.document.getElementsByTagName('button');
-                        for (var i = 0; i < buttons.length; i++) {
-                            if (buttons[i].innerText.includes('Processando...') || buttons[i].innerText.includes('Clique aqui')) {
-                                buttons[i].click();
-                                break;
-                            }
-                        }
-                    }, 100);
-                </script>
-                """,
-                height=0,
-                width=0
-            )
+            st.rerun()
     else:
         st.warning("Clique no botão 'Start' acima para ligar a câmera.")
