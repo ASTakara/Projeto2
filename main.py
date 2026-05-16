@@ -5,24 +5,43 @@ from pyzbar.pyzbar import decode
 
 # Configuração da Página
 st.set_page_config(page_title="Scanner de Código de Barras", layout="centered")
-st.title("📷 Scanner de Código de Barras Omni-Direcional")
+st.title("📷 Scanner de Código de Barras")
 
-# Inicializa o estado para guardar o resultado
+# Inicializa o estado para guardar o resultado e a quantidade
 if "resultado_final" not in st.session_state:
     st.session_state["resultado_final"] = None
+if "quantidade_final" not in st.session_state:
+    st.session_state["quantidade_final"] = 1
 
-# FLUXO A: Código processado com sucesso
+# FLUXO A: Código processado com sucesso (Exibe Resultado + Quantidade)
 if st.session_state["resultado_final"]:
-    st.success("🎉 Código capturado com sucesso!")
-    st.code(st.session_state["resultado_final"], language="text")
+    st.success("🎉 Produto escaneado com sucesso!")
+
+    # Cria duas colunas para mostrar as informações organizadas
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(label="Código de Barras", value=st.session_state["resultado_final"])
+    with col2:
+        st.metric(label="Quantidade Informada", value=f"{st.session_state['quantidade_final']} un")
 
     if st.button("🔄 Escanear Próximo Código", use_container_width=True):
         st.session_state["resultado_final"] = None
+        # Reseta para 1 para o próximo produto
+        st.session_state["quantidade_final"] = 1
         st.rerun()
 
-# FLUXO B: Captura de Foto Estável (Câmera Frontal)
+# FLUXO B: Escolha da Quantidade e Captura da Foto
 else:
-    st.write("Tire uma foto do código de barras (funciona em pé ou deitado):")
+    # Caixa de texto numérica para inserir a quantidade desejada
+    quantidade_input = st.number_input(
+        "1. Insira a quantidade deste produto:",
+        min_value=1,
+        value=1,
+        step=1,
+        key="campo_quantidade"
+    )
+
+    st.write("2. Tire a foto do código de barras (funciona em pé ou deitado):")
 
     # Componente oficial do Streamlit (Câmera frontal por padrão)
     img_file = st.camera_input("Alinhe o código de barras na tela")
@@ -35,7 +54,7 @@ else:
         # Converte para escala de cinza
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
 
-        # --- TENTATIVA 1: Tenta ler na posição original (em pé) ---
+        # --- TENTATIVA 1: Posição original (em pé) ---
         codigos_encontrados = decode(gray)
         codigo_valido = None
 
@@ -46,9 +65,8 @@ else:
                     codigo_valido = texto_lido
                     break
 
-        # --- TENTATIVA 2: Se falhar, rotaciona 90° para ler o código deitado ---
+        # --- TENTATIVA 2: Se falhar, rotaciona 90° (deitado) ---
         if not codigo_valido:
-            # Rotaciona a imagem em escala de cinza em 90 graus no sentido horário
             gray_rotated = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
             codigos_encontrados_rotacionados = decode(gray_rotated)
 
@@ -61,7 +79,9 @@ else:
 
         # Validação do resultado final
         if codigo_valido:
+            # Salva o código de barras e a quantidade definida pelo usuário
             st.session_state["resultado_final"] = codigo_valido
+            st.session_state["quantidade_final"] = quantidade_input
             st.rerun()
         else:
             st.error(
