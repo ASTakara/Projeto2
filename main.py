@@ -151,7 +151,7 @@ with st.container(border=True):
 
     with col_acao:
         botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
-        if st.button("Fechar Endereço", type="primary", disabled=botao_fechar_desabilitado, use_container_width=True):
+        if st.button("Fechar Endereço", type="primary", disabled=botao_fechan_desabilitado, use_container_width=True):
             st.toast(f"🔒 Endereço {st.session_state['prateleira_atual']} fechado com sucesso!")
             st.session_state["prateleira_atual"] = ""
             st.session_state["label_api_prateleira"] = ""
