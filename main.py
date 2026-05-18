@@ -7,7 +7,7 @@ import requests
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Inovaçao - Coleta de Produtos", layout="centered")
-#st.title("📦 Coleta de Produtos")
+# st.title("📦 Coleta de Produtos")
 st.markdown("<h1 style='font-size: 25px;'>📦 Coleta de Produtos</h1>", unsafe_allow_html=True)
 
 
@@ -71,6 +71,30 @@ def escanear_codigo(img_file):
     return None
 
 
+# --- NOVA FUNÇÃO REUTILIZÁVEL PARA PROCESSAR PRODUTO ---
+def processar_codigo_produto(codigo_prod, quantidade_input):
+    """Encapsula a lógica de validação e gravação para reaproveitar no scanner e na digitação"""
+    sucesso_prod, resultado_prod = consultar_api_produto(codigo_prod)
+
+    if sucesso_prod:
+        sucesso_gravacao = gravar_dados_inventario(
+            endereco=st.session_state["prateleira_atual"],
+            codigo_barras=codigo_prod,
+            quantidade=quantidade_input
+        )
+
+        if sucesso_gravacao:
+            st.session_state["produto_codigo"] = codigo_prod
+            st.session_state["produto_titulo"] = resultado_prod
+            st.session_state["produto_quantidade"] = quantidade_input
+            st.session_state["produto_escanear"] = False
+            st.rerun()
+        else:
+            st.error("❌ O produto é válido, mas ocorreu um erro ao gravar os dados no servidor.")
+    else:
+        st.error(f"❌ Erro no Produto: {resultado_prod}")
+
+
 # --- INICIALIZAÇÃO DO ESTADO (SESSION STATE) ---
 if "prateleira_atual" not in st.session_state:
     st.session_state["prateleira_atual"] = ""
@@ -107,7 +131,7 @@ if st.session_state["encerrado"]:
 # =====================================================================
 st.write("")
 with st.container(border=True):
-    #st.markdown("### 📍 Dados do Endereço")
+    # st.markdown("### 📍 Dados do Endereço")
     st.markdown("<h1 style='font-size: 25px;'>📍 Dados do Endereço</h1>", unsafe_allow_html=True)
 
     # Coluna 1 dedicada às informações textuais, Coluna 2 dedicada ao botão de ação
@@ -127,7 +151,7 @@ with st.container(border=True):
 
     with col_acao:
         botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
-        if st.button("Fechar Endereço", type="primary", disabled=botao_fechar_desabilitado, use_container_width=True):
+        if st.button("Fechar Endereço", type="primary", disabled=botao_fechan_desabilitado, use_container_width=True):
             st.toast(f"🔒 Endereço {st.session_state['prateleira_atual']} fechado com sucesso!")
             st.session_state["prateleira_atual"] = ""
             st.session_state["label_api_prateleira"] = ""
@@ -163,7 +187,7 @@ if not st.session_state["prateleira_atual"]:
 # PASSO B: Prateleira ativa, libera os produtos
 else:
     with st.container(border=True):
-        #st.markdown("### 📦 Coleta de Produtos")
+        # st.markdown("### 📦 Coleta de Produtos")
         st.markdown("<h1 style='font-size: 25px;'>📦 Coleta de Produtos</h1>", unsafe_allow_html=True)
 
         # Caso 1: Tela de Sucesso após gravação dos dados
@@ -196,30 +220,33 @@ else:
             st.write("2. Tire a foto do Código de Barras do **Produto**:")
             img_produto = st.camera_input("Escanear Código do Produto", key="cam_produto")
 
+            # Fluxo via Câmera (Inalterado)
             if img_produto is not None:
                 codigo_prod = escanear_codigo(img_produto)
                 if codigo_prod:
-                    sucesso_prod, resultado_prod = consultar_api_produto(codigo_prod)
-
-                    if sucesso_prod:
-                        sucesso_gravacao = gravar_dados_inventario(
-                            endereco=st.session_state["prateleira_atual"],
-                            codigo_barras=codigo_prod,
-                            quantidade=quantidade_input
-                        )
-
-                        if sucesso_gravacao:
-                            st.session_state["produto_codigo"] = codigo_prod
-                            st.session_state["produto_titulo"] = resultado_prod
-                            st.session_state["produto_quantidade"] = quantidade_input
-                            st.session_state["produto_escanear"] = False
-                            st.rerun()
-                        else:
-                            st.error("❌ O produto é válido, mas ocorreu um erro ao gravar os dados no servidor.")
-                    else:
-                        st.error(f"❌ Erro no Produto: {resultado_prod}")
+                    processar_codigo_produto(codigo_prod, quantidade_input)
                 else:
                     st.error("❌ Código do produto não reconhecido fisicamente. Verifique o enquadramento.")
+
+            # --- NOVA SEÇÃO: ALTERNATIVA DE DIGITAÇÃO MANUAL ---
+            st.markdown("---")
+            st.write("⌨️ **Não conseguiu escanear?** Digite o código manualmente:")
+
+            col_input, col_btn = st.columns([2.5, 1.5], vertical_alignment="bottom")
+
+            with col_input:
+                codigo_digitado = st.text_input(
+                    "Código de Barras Manual:",
+                    placeholder="Ex: 7891234567890",
+                    label_visibility="collapsed"
+                ).strip()
+
+            with col_btn:
+                if st.button("Confirmar Código", use_container_width=True, type="secondary"):
+                    if codigo_digitado:
+                        processar_codigo_produto(codigo_digitado, quantidade_input)
+                    else:
+                        st.warning("⚠️ Por favor, digite um código antes de confirmar.")
 
 # =====================================================================
 # BLOCO 3: BOTÃO FIXO NO FIM DA TELA PARA ENCERRAR O NAVEGADOR
