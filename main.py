@@ -102,16 +102,16 @@ if st.session_state["encerrado"]:
     st.stop()
 
 # =====================================================================
-# BLOCO 1: GROUP BOX - IDENTIFICAÇÃO E FECHAMENTO DA PRATELEIRA
+# BLOCO 1: GROUP BOX - DADOS DA LOCALIZAÇÃO (ORDEM CORRIGIDA)
 # =====================================================================
 st.write("")
-# Criando a caixa agrupadora (Group Box) para a Localização
 with st.container(border=True):
     st.markdown("### 📍 Dados da Localização")
 
-    col_input, col_botao = st.columns([2.5, 1.5], vertical_alignment="bottom")
+    # Coluna 1 dedicada às informações textuais, Coluna 2 dedicada ao botão de ação
+    col_informacoes, col_acao = st.columns([2.5, 1.5], vertical_alignment="bottom")
 
-    with col_input:
+    with col_informacoes:
         st.text_input(
             "Endereço da Prateleira Ativa:",
             value=st.session_state["prateleira_atual"],
@@ -119,7 +119,11 @@ with st.container(border=True):
             placeholder="Aguardando leitura do código...",
         )
 
-    with col_botao:
+        # O label com o local consultado na API fica aqui, logo após o endereço e antes do botão
+        if st.session_state["label_api_prateleira"]:
+            st.info(f"**Local:** {st.session_state['label_api_prateleira']}")
+
+    with col_acao:
         botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
         if st.button("Fechar Prateleira", type="primary", disabled=botao_fechar_desabilitado, use_container_width=True):
             st.toast(f"🔒 Prateleira {st.session_state['prateleira_atual']} fechada com sucesso!")
@@ -131,16 +135,12 @@ with st.container(border=True):
             st.session_state["produto_escanear"] = True
             st.rerun()
 
-    # Label do Local (dentro do Group Box)
-    if st.session_state["label_api_prateleira"]:
-        st.info(f"**Local:** {st.session_state['label_api_prateleira']}")
-
 # =====================================================================
 # BLOCO 2: FLUXO DINÂMICO DE PRODUTOS
 # =====================================================================
 st.write("")
 
-# PASSO A: Se não tem prateleira cadastrada com sucesso, abre a câmera fora de caixas
+# PASSO A: Escanear Prateleira
 if not st.session_state["prateleira_atual"]:
     st.info("👋 Para iniciar, aponte a câmera para o código da **Prateleira**.")
     img_prateleira = st.camera_input("Escanear Código da Prateleira", key="cam_prateleira")
@@ -158,9 +158,8 @@ if not st.session_state["prateleira_atual"]:
         else:
             st.error("❌ Código da prateleira não reconhecido. Tente novamente.")
 
-# PASSO B: Prateleira ativa, libera a área de produtos
+# PASSO B: Prateleira ativa, libera os produtos
 else:
-    # Criando a caixa agrupadora (Group Box) para a Coleta de Itens
     with st.container(border=True):
         st.markdown("### 📦 Coleta de Itens")
 
@@ -175,7 +174,7 @@ else:
             with col_p2:
                 st.metric(label="Quantidade Gravada", value=f"{st.session_state['produto_quantidade']} un")
 
-            st.write("")  # Espaçador
+            st.write("")
             if st.button("🔄 Escanear Próximo Produto", use_container_width=True):
                 st.session_state["produto_codigo"] = None
                 st.session_state["produto_titulo"] = ""
