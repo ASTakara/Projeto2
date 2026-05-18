@@ -8,7 +8,7 @@ import requests
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Inovaçao - Coleta de Produtos", layout="centered")
 #st.title("📦 Coleta de Produtos")
-st.markdown("<h1 style='font-size: 28px;'>📦 Coleta de Produtos</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='font-size: 25px;'>📦 Coleta de Produtos</h1>", unsafe_allow_html=True)
 
 
 # =====================================================================
@@ -107,7 +107,8 @@ if st.session_state["encerrado"]:
 # =====================================================================
 st.write("")
 with st.container(border=True):
-    st.markdown("### 📍 Dados do Endereço")
+    #st.markdown("### 📍 Dados do Endereço")
+    st.markdown("<h1 style='font-size: 25px;'>📍 Dados do Endereço</h1>", unsafe_allow_html=True)
 
     # Coluna 1 dedicada às informações textuais, Coluna 2 dedicada ao botão de ação
     col_informacoes, col_acao = st.columns([2.5, 1.5], vertical_alignment="bottom")
@@ -162,7 +163,8 @@ if not st.session_state["prateleira_atual"]:
 # PASSO B: Prateleira ativa, libera os produtos
 else:
     with st.container(border=True):
-        st.markdown("### 📦 Coleta de Produtos")
+        #st.markdown("### 📦 Coleta de Produtos")
+        st.markdown("<h1 style='font-size: 25px;'>📦 Coleta de Produtos</h1>", unsafe_allow_html=True)
 
         # Caso 1: Tela de Sucesso após gravação dos dados
         if not st.session_state["produto_escanear"] and st.session_state["produto_codigo"]:
