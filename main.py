@@ -5,8 +5,8 @@ from pyzbar.pyzbar import decode
 import streamlit.components.v1 as components
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Coletor de Inventário", layout="centered")
-st.title("📦 Sistema de Coleta de Inventário")
+st.set_page_config(page_title="Inovacao - Coletor", layout="centered")
+st.title("📦 Coletor")
 
 
 # --- FUNÇÃO AUXILIAR DE LEITURA (OPENCV + PYZBAR) ---
@@ -72,28 +72,28 @@ if st.session_state["encerrado"]:
 # BLOCO 1: IDENTIFICAÇÃO E FECHAMENTO DA PRATELEIRA
 # =====================================================================
 st.write("---")
-st.subheader("📍 Localização")
+st.subheader("📍 Endereço")
 
 col_input, col_botao = st.columns([3, 1], vertical_alignment="bottom")
 
 with col_input:
     st.text_input(
-        "Endereço da Prateleira Ativa:",
+        "Endereço Ativo:",
         value=st.session_state["prateleira_atual"],
         disabled=True,
-        placeholder="Aguardando leitura do código da prateleira...",
+        placeholder="Aguardando leitura do Emdereço...",
     )
 
 with col_botao:
     botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
 
     if st.button(
-            "Fechar Prateleira",
+            "Fechar Emdereço",
             type="primary",
             disabled=botao_fechar_desabilitado,
             use_container_width=True,
     ):
-        st.toast(f"🔒 Prateleira {st.session_state['prateleira_atual']} fechada com sucesso!")
+        st.toast(f"🔒 Endereço {st.session_state['prateleira_atual']} fechada com sucesso!")
         st.session_state["prateleira_atual"] = ""
         st.session_state["produto_codigo"] = None
         st.session_state["produto_quantidade"] = 1
@@ -105,8 +105,8 @@ with col_botao:
 # =====================================================================
 
 if not st.session_state["prateleira_atual"]:
-    st.info("👋 Para iniciar, aponte a câmera para o código da **Prateleira**.")
-    img_prateleira = st.camera_input("Escanear Código da Prateleira", key="cam_prateleira")
+    st.info("👋 Para iniciar, aponte a câmera para a etiqueta do **Endereço**.")
+    img_prateleira = st.camera_input("Escanear Etiqueta de Endereço", key="cam_prateleira")
 
     if img_prateleira is not None:
         codigo_prat = escanear_codigo(img_prateleira)
@@ -114,7 +114,7 @@ if not st.session_state["prateleira_atual"]:
             st.session_state["prateleira_atual"] = codigo_prat
             st.rerun()
         else:
-            st.error("❌ Código da prateleira não reconhecido. Tente novamente.")
+            st.error("❌ Código do Endereço não reconhecido. Tente novamente.")
 
 else:
     st.write("---")
@@ -137,10 +137,10 @@ else:
 
     # Tela de Captura do Produto
     else:
-        st.subheader("📦 Coleta de Itens")
+        st.subheader("📦 Coleta de Produtos")
 
         quantidade_input = st.number_input(
-            "1. Informe a quantidade do item:",
+            "1. Informe a Quantidade do Produto:",
             min_value=1, value=1, step=1,
             key="campo_quantidade",
         )
