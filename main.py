@@ -7,7 +7,8 @@ import requests
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Inovaçao - Coleta de Produtos", layout="centered")
-st.title("📦 Coleta de Produtos")
+#st.title("📦 Coleta de Produtos")
+st.markdown("<h1 style='font-size: 28px;'>📦 Coleta de Produtos</h1>", unsafe_allow_html=True)
 
 
 # =====================================================================
