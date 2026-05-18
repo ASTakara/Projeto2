@@ -3,23 +3,23 @@ import cv2
 import numpy as np
 from pyzbar.pyzbar import decode
 
-# Configuração da Página
-st.set_page_config(page_title="Scanner de Inventário", layout="centered")
-st.title("📷 Scanner de Inventário")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Coletor de Inventário", layout="centered")
+st.title("📦 Sistema de Coleta de Inventário")
 
 
-# --- FUNÇÃO AUXILIAR DE LEITURA ---
+# --- FUNÇÃO AUXILIAR DE LEITURA (OPENCV + PYZBAR) ---
 def escanear_codigo(img_file):
-    """Recebe o arquivo de imagem do Streamlit e tenta decodificar o código de barras"""
+    """Recebe a imagem da câmera e tenta decodificar em duas posições (em pé e deitado)"""
     if img_file is None:
         return None
 
-    # Converte para o formato do OpenCV
+    # Converte o arquivo enviado para o formato do OpenCV
     bytes_data = img_file.getvalue()
     cv_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
 
-    # Tentativa 1: Posição original
+    # Tentativa 1: Posição original (em pé)
     codigos = decode(gray)
     if codigos:
         for obj in codigos:
@@ -27,7 +27,7 @@ def escanear_codigo(img_file):
             if texto:
                 return texto
 
-    # Tentativa 2: Rotacionado 90°
+    # Tentativa 2: Rotacionado 90° (deitado)
     gray_rotated = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
     codigos_rotacionados = decode(gray_rotated)
     if codigos_rotacionados:
@@ -40,98 +40,134 @@ def escanear_codigo(img_file):
 
 
 # --- INICIALIZAÇÃO DO ESTADO (SESSION STATE) ---
-if "endereco_prateleira" not in st.session_state:
-    st.session_state["endereco_prateleira"] = None
-if "resultado_final" not in st.session_state:
-    st.session_state["resultado_final"] = None
-if "quantidade_final" not in st.session_state:
-    st.session_state["quantidade_final"] = 1
+if "prateleira_atual" not in st.session_state:
+    st.session_state["prateleira_atual"] = ""
+if "produto_escanear" not in st.session_state:
+    # Controla se estamos na tela de sucesso do produto
+    st.session_state["produto_escanear"] = True
+if "produto_codigo" not in st.session_state:
+    st.session_state["produto_codigo"] = None
+if "produto_quantidade" not in st.session_state:
+    st.session_state["produto_quantidade"] = 1
 
 
-# --- FLUXO C: Exibe Resultado Final Consolidado ---
-if st.session_state["endereco_prateleira"] and st.session_state["resultado_final"]:
-    st.success("🎉 Dados capturados com sucesso!")
+# =====================================================================
+# BLOCO 1: IDENTIFICAÇÃO E FECHAMENTO DA PRATELEIRA
+# =====================================================================
+st.write("---")
+st.subheader("📍 Localização")
 
-    # Exibe as métricas em 3 colunas
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(
-            label="📍 Endereço Prateleira",
-            value=st.session_state["endereco_prateleira"],
-        )
-    with col2:
-        st.metric(
-            label="📦 Código do Produto",
-            value=st.session_state["resultado_final"],
-        )
-    with col3:
-        st.metric(
-            label="🔢 Quantidade",
-            value=f"{st.session_state['quantidade_final']} un",
-        )
+# Cria duas colunas: campo de texto largo e o botão de fechar ao lado
+col_input, col_botao = st.columns([3, 1], vertical_alignment="bottom")
 
-    # Opções para continuar
-    st.write("---")
-    if st.button("🔄 Escanear Próximo Produto (Mesma Prateleira)", use_container_width=True):
-        st.session_state["resultado_final"] = None
-        st.session_state["quantidade_final"] = 1
-        st.rerun()
-
-    if st.button("📍 Mudar de Prateleira", type="secondary", use_container_width=True):
-        st.session_state["endereco_prateleira"] = None
-        st.session_state["resultado_final"] = None
-        st.session_state["quantidade_final"] = 1
-        st.rerun()
-
-
-# --- FLUXO A: Escanear Endereço da Prateleira ---
-elif not st.session_state["endereco_prateleira"]:
-    st.subheader("Passo 1: Identificar a Prateleira")
-    st.write("Tire a foto do código de barras da **prateleira/posição**:")
-
-    img_endereco = st.camera_input("Alinhe o código do endereço na tela", key="cam_endereco")
-
-    if img_endereco is not None:
-        codigo_endereco = escanear_codigo(img_endereco)
-        if codigo_endereco:
-            st.session_state["endereco_prateleira"] = codigo_endereco
-            st.rerun()
-        else:
-            st.error(
-                "❌ Não foi possível ler o código do endereço. Verifique o foco e tente novamente."
-            )
-
-
-# --- FLUXO B: Informar Quantidade e Escanear Produto ---
-else:
-    # Mostra em qual prateleira o usuário está trabalhando atualmente
-    st.info(f"📍 Prateleira Atual: **{st.session_state['endereco_prateleira']}**")
-
-    st.subheader("Passo 2: Escanear Produto")
-
-    quantidade_input = st.number_input(
-        "1. Insira a quantidade deste produto:",
-        min_value=1,
-        value=1,
-        step=1,
-        key="campo_quantidade",
+with col_input:
+    st.text_input(
+        "Endereço da Prateleira Ativa:",
+        value=st.session_state["prateleira_atual"],
+        disabled=True,
+        placeholder="Aguardando leitura do código da prateleira...",
     )
 
-    st.write("2. Tire a foto do código de barras do **produto**:")
-    img_produto = st.camera_input("Alinhe o código do produto na tela", key="cam_produto")
+with col_botao:
+    # O botão só fica ativo se houver uma prateleira bipada
+    botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
 
-    if img_produto is not None:
-        codigo_produto = escanear_codigo(img_produto)
-        if codigo_produto:
-            st.session_state["resultado_final"] = codigo_produto
-            st.session_state["quantidade_final"] = quantidade_input
+    if st.button(
+        "Fechar Prateleira",
+        type="primary",
+        disabled=botao_fechar_desabilitado,
+        use_container_width=True,
+    ):
+        # --- AÇÃO DE FECHAMENTO ---
+        # Aqui no futuro você pode salvar no banco que a prateleira X foi encerrada
+        st.toast(
+            f"🔒 Prateleira {st.session_state['prateleira_atual']} fechada com sucesso!"
+        )
+
+        # Reseta todo o estado para começar uma nova prateleira do zero
+        st.session_state["prateleira_atual"] = ""
+        st.session_state["produto_codigo"] = None
+        st.session_state["produto_quantidade"] = 1
+        st.session_state["produto_escanear"] = True
+        st.rerun()
+
+
+# =====================================================================
+# BLOCO 2: FLUXO DINÂMICO (CÂMERAS E PRODUTOS)
+# =====================================================================
+
+# PASSO A: Se não tem prateleira bipada, abre a câmera da prateleira
+if not st.session_state["prateleira_atual"]:
+    st.info("👋 Para iniciar, aponte a câmera para o código da **Prateleira**.")
+    img_prateleira = st.camera_input(
+        "Escanear Código da Prateleira", key="cam_prateleira"
+    )
+
+    if img_prateleira is not None:
+        codigo_prat = escanear_codigo(img_prateleira)
+        if codigo_prat:
+            st.session_state["prateleira_atual"] = codigo_prat
             st.rerun()
         else:
-            st.error(
-                "❌ Não foi possível ler o código do produto. Verifique o foco e tente novamente."
+            st.error("❌ Código da prateleira não reconhecido. Tente novamente.")
+
+# PASSO B: Se já tem prateleira, libera o fluxo de bipar produtos nela
+else:
+    st.write("---")
+
+    # Tela de Sucesso do Produto Bipado
+    if (
+        not st.session_state["produto_escanear"]
+        and st.session_state["produto_codigo"]
+    ):
+        st.success("🎉 Produto adicionado à prateleira!")
+
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            st.metric(
+                label="Código do Produto", value=st.session_state["produto_codigo"]
+            )
+        with col_p2:
+            st.metric(
+                label="Quantidade",
+                value=f"{st.session_state['produto_quantidade']} un",
             )
 
-    # Botão de escape caso ele queira mudar a prateleira antes de bipar um produto
-    if st.button("⬅️ Voltar / Mudar Prateleira", type="secondary"):
-        st.session_state["endereco_prateleira"] = None
-        st.rerun()
+        if st.button("🔄 Escanear Próximo Produto", use_container_width=True):
+            # Reseta as variáveis do produto, mas mantém a prateleira intacta
+            st.session_state["produto_codigo"] = None
+            st.session_state["produto_quantidade"] = 1
+            st.session_state["produto_escanear"] = True
+            st.rerun()
+
+    # Tela de Captura do Produto (Quantidade + Câmera)
+    else:
+        st.subheader("📦 Coleta de Itens")
+
+        # Campo numérico para a quantidade
+        quantidade_input = st.number_input(
+            "1. Informe a quantidade do item:",
+            min_value=1,
+            value=1,
+            step=1,
+            key="campo_quantidade",
+        )
+
+        st.write("2. Tire a foto do código de barras do **produto**:")
+        img_produto = st.camera_input(
+            "Escanear Código do Produto", key="cam_produto"
+        )
+
+        if img_produto is not None:
+            codigo_prod = escanear_codigo(img_produto)
+            if codigo_prod:
+                # Salva os dados do produto no estado
+                st.session_state["produto_codigo"] = codigo_prod
+                st.session_state["produto_quantidade"] = quantidade_input
+                # Muda para a tela de sucesso do produto
+                st.session_state["produto_escanear"] = False
+                st.rerun()
+            else:
+                st.error(
+                    "❌ Código do produto não reconhecido. Verifique a iluminação e tente novamente."
+                )
