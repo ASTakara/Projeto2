@@ -6,8 +6,8 @@ import streamlit.components.v1 as components
 import requests
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Coletor de Inventário", layout="centered")
-st.title("📦 Sistema de Coleta de Inventário")
+st.set_page_config(page_title="Inovaçao - Coleta de Produtos", layout="centered")
+st.title("📦 Coleta de Produtos")
 
 
 # =====================================================================
@@ -106,14 +106,14 @@ if st.session_state["encerrado"]:
 # =====================================================================
 st.write("")
 with st.container(border=True):
-    st.markdown("### 📍 Dados da Localização")
+    st.markdown("### 📍 Dados do Endereço")
 
     # Coluna 1 dedicada às informações textuais, Coluna 2 dedicada ao botão de ação
     col_informacoes, col_acao = st.columns([2.5, 1.5], vertical_alignment="bottom")
 
     with col_informacoes:
         st.text_input(
-            "Endereço da Prateleira Ativa:",
+            "Endereço Ativo:",
             value=st.session_state["prateleira_atual"],
             disabled=True,
             placeholder="Aguardando leitura do código...",
@@ -125,8 +125,8 @@ with st.container(border=True):
 
     with col_acao:
         botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
-        if st.button("Fechar Prateleira", type="primary", disabled=botao_fechar_desabilitado, use_container_width=True):
-            st.toast(f"🔒 Prateleira {st.session_state['prateleira_atual']} fechada com sucesso!")
+        if st.button("Fechar Endereço", type="primary", disabled=botao_fechar_desabilitado, use_container_width=True):
+            st.toast(f"🔒 Endereço {st.session_state['prateleira_atual']} fechado com sucesso!")
             st.session_state["prateleira_atual"] = ""
             st.session_state["label_api_prateleira"] = ""
             st.session_state["produto_codigo"] = None
@@ -142,8 +142,8 @@ st.write("")
 
 # PASSO A: Escanear Prateleira
 if not st.session_state["prateleira_atual"]:
-    st.info("👋 Para iniciar, aponte a câmera para o código da **Prateleira**.")
-    img_prateleira = st.camera_input("Escanear Código da Prateleira", key="cam_prateleira")
+    st.info("👋 Para iniciar, aponte a câmera para a Etiqueta do **Endereço**.")
+    img_prateleira = st.camera_input("Escanear Etiqueta do Endereço", key="cam_prateleira")
 
     if img_prateleira is not None:
         codigo_prat = escanear_codigo(img_prateleira)
@@ -156,12 +156,12 @@ if not st.session_state["prateleira_atual"]:
             else:
                 st.error(f"❌ Erro na validação do endereço: {resultado_api}")
         else:
-            st.error("❌ Código da prateleira não reconhecido. Tente novamente.")
+            st.error("❌ Endereço não reconhecido. Tente novamente.")
 
 # PASSO B: Prateleira ativa, libera os produtos
 else:
     with st.container(border=True):
-        st.markdown("### 📦 Coleta de Itens")
+        st.markdown("### 📦 Coleta de Produtos")
 
         # Caso 1: Tela de Sucesso após gravação dos dados
         if not st.session_state["produto_escanear"] and st.session_state["produto_codigo"]:
@@ -172,7 +172,7 @@ else:
                 st.metric(label="Código do Produto", value=st.session_state["produto_codigo"])
                 st.markdown(f"**🏷️ Título:** {st.session_state['produto_titulo']}")
             with col_p2:
-                st.metric(label="Quantidade Gravada", value=f"{st.session_state['produto_quantidade']} un")
+                st.metric(label="Quantidade", value=f"{st.session_state['produto_quantidade']} un")
 
             st.write("")
             if st.button("🔄 Escanear Próximo Produto", use_container_width=True):
@@ -185,12 +185,12 @@ else:
         # Caso 2: Tela de Captura (Campos de entrada e Câmera do Produto)
         else:
             quantidade_input = st.number_input(
-                "1. Informe a quantidade do item:",
+                "1. Informe a Quantidade do Produto:",
                 min_value=1, value=1, step=1,
                 key="campo_quantidade",
             )
 
-            st.write("2. Tire a foto do código de barras do **produto**:")
+            st.write("2. Tire a foto do Código de Barras do **Produto**:")
             img_produto = st.camera_input("Escanear Código do Produto", key="cam_produto")
 
             if img_produto is not None:
