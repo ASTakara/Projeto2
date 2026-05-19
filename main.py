@@ -5,6 +5,8 @@ from pyzbar.pyzbar import decode
 import streamlit.components.v1 as components
 import requests
 
+_Ax_CodeCli = None
+
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Inovaçao - Coleta de Produtos", layout="centered")
 # st.title("📦 Coleta de Produtos")
@@ -16,14 +18,30 @@ st.markdown("<h1 style='font-size: 25px;'>📦 Coleta de Produtos</h1>", unsafe_
 # =====================================================================
 
 def consultar_api_endereco(codigo_endereco):
-    """Valida se o endereço existe no sistema"""
+    global _Ax_CodeCli
+
+
+    URL_API = "http://192.168.15.5:8000/pesquisar_endereco"
+    parametros = {"endereco": codigo_endereco}
+
     try:
-        if codigo_endereco.isalnum():
-            return True, f"Setor Logístico - Rua 4 (Código: {codigo_endereco})"
-        else:
-            return False, "Endereço não localizado no sistema."
-    except Exception:
-        return False, "Erro de conexão com o servidor da API."
+        resposta = requests.get(URL_API, params=parametros, timeout=5)
+
+        if resposta.status_code == 200:
+            js = resposta.json()
+            codecli = js.get("codecli")
+            cliente = js.get("cliente")
+
+            if codecli and str(codecli).isalnum():
+                _Ax_CodeCli = codecli
+                return True, f"Cliente: {cliente})"
+            else:
+                return False, "Endereço não localizado no sistema."
+
+        return False, f"Erro na API: Status {resposta.status_code}."
+
+    except requests.exceptions.RequestException:
+        return False, "Erro de conexão física com o servidor da API."
 
 
 def consultar_api_produto(codigo_barras):
