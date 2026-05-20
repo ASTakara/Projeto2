@@ -16,15 +16,12 @@ st.markdown("<h1 style='font-size: 25px;'>📦 Coleta de Produtos</h1>", unsafe_
 # =====================================================================
 
 def consultar_api_endereco(codigo_endereco):
-    """Valida se o endereço existe no sistema"""
     try:
         if codigo_endereco.isalnum():
             return True, f"Setor Logístico - Rua 4 (Código: {codigo_endereco})"
-        else:
-            return False, "Endereço não localizado no sistema."
+        return False, "Endereço não localizado no sistema."
     except Exception:
         return False, "Erro de conexão com o servidor da API."
-
 
 def consultar_api_produto(codigo_barras):
     """Consulta a API para verificar se o produto existe e trazer seu Título"""
@@ -151,7 +148,7 @@ with st.container(border=True):
 
     with col_acao:
         botao_fechar_desabilitado = not bool(st.session_state["prateleira_atual"])
-        if st.button("Fechar Endereço", type="primary", disabled=botao_fechan_desabilitado, use_container_width=True):
+        if st.button("Fechar Endereço", type="primary", disabled=botao_fechar_desabilitado, use_container_width=True):
             st.toast(f"🔒 Endereço {st.session_state['prateleira_atual']} fechado com sucesso!")
             st.session_state["prateleira_atual"] = ""
             st.session_state["label_api_prateleira"] = ""
